@@ -3,7 +3,7 @@
 Author: Subash Khanal
 
 ## Description  
-This program implements the sliding window protocol in UDP by transferring a string. The length of data is always 10 from the buﬀer. So the total size is actually ﬁxed at 22 bytes. The total number of packets that need to be received successfully at the receiver is 24. Their sequence numbers are 0, 1, 2, · · · 23. The two are two programs `sender.c` and `receiver.c` if run in two terminals within a same local machine (127.0.0.1) take part the communication with sliding window protocol.  To simulate the loss of packets a sequence of packets to be dropped is passed as argument while running the server program.
+This program implements the sliding window protocol in UDP by transferring a string. The length of data is always 10 from the buﬀer. So the total size is actually ﬁxed at 22 bytes. The total number of packets that need to be received successfully at the receiver is 24. Their sequence numbers are 0, 1, 2, · · · 23. The two are two programs `sender.c` and `receiver.c` if run in two terminals within a same local machine (127.0.0.1) take part in the communication with sliding window protocol.  To simulate the loss of packets a sequence of packets to be dropped is passed as argument while running the server program.
 
 ## Compilation  
 makefile is provided which can be run using command `$ make` in the working directory which contains the program for sender and receiver.
