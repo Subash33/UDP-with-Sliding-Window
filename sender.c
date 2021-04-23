@@ -20,7 +20,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
-#define ECHOMAX 10     /* Longest string to echo */
+#define ECHOMAX 10     /* Longest string to echo*/
 #define TIMEOUT_SECS 4 /* Seconds between retransmits */
 #define MAXTRIES 5     /* Tries before giving up */
 
@@ -67,7 +67,6 @@ int createPacketStruct(struct data_pkt_t *dataPacket, int seq, int length, char 
     memcpy(dataPacket->data, echoString + beginIndex, length);
     memset(data, 0, length);
     memcpy(data, dataPacket->data, length);
-
     int sizeTotal = sizeof(dataPacket->type) + sizeof(dataPacket->seq_num) + sizeof(dataPacket->length) + sizeof(dataPacket->data); //length;
     return sizeTotal;
 }
@@ -83,13 +82,16 @@ int main(int argc, char *argv[])
     struct sigaction myAction;    /* For setting signal handler */
     char *servIP;                 /* IP address of server */
     char *echoString;             /* String to send to echo server */
-    
+    char echoBuffer[ECHOMAX + 1]; /* Buffer for echo string */
+    int echoStringLen;            /* Length of string to echo */
+    int respStringLen;            /* Size of received datagram */
+
     struct data_pkt_t data_pkt;
     struct ack_pkt_t ack_pkt;
 
-    if ((argc < 2) || (argc > 3)) /* Test for correct number of arguments */
+    if ((argc < 2) || (argc > 4)) /* Test for correct number of arguments */
     {
-        fprintf(stderr, "Usage: %s <Server IP> [<Server Port>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <Server IP> [<Server Port>] <Echo Word>\n", argv[0]);
         exit(1);
     }
 
@@ -99,7 +101,10 @@ int main(int argc, char *argv[])
     else
         echoServPort = 7; /* 7 is well-known port for echo service */
 
-    echoString = "The University of Kentucky is a public, research-extensive, land grant university dedicated to improving people’s lives through excellence in teaching, research, health care, cultural enrichment, and economic development.";
+    if (argc == 4)
+        echoString = argv[3]; /* Second arg: string to echo */
+    else
+        echoString = "The University of Kentucky is a public, research-extensive, land grant university dedicated to improving people’s lives through excellence in teaching, research, health care, cultural enrichment, and economic development.";
 
     /* Create a best-effort datagram socket using UDP */
     if ((sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
@@ -131,29 +136,20 @@ int main(int argc, char *argv[])
         DieWithError("bind() failed");
 
     time_t now;
-    int numBytes = -1;        
-    int lastAckReceived = -1; 
+    int numBytes = -1;        //number of bytes sent
+    int lastAckReceived = -1; //last ack received
     /* 
     * sliding window initialization
     */
     int static const slidingWindowSize = 5;
     int static const numPackets = 24; //number of packets to create and send
-
-    int static const totalClosingCount = 24;
-
-    /*
-    acknowledgement variables
-    */
-    int static const ackLength = 7;      
-    int static const ackSeqCumLength = 4; 
-
+    
     int i = 0;
     int j = 0;
     int ndups = 0;
 
-    char closingCount = 0; //This needed for tracking final ACK lost
 
-    
+    /* Get a response */
     fromSize = sizeof(fromAddr);
 
     while (1)
@@ -161,28 +157,20 @@ int main(int argc, char *argv[])
         for (i = lastAckReceived + 1; i <= (lastAckReceived + slidingWindowSize) && i <= numPackets; i++)
         {
 
-            if (i == numPackets)
-            {
-
-                closingCount++;
-            }
 
             int packetSize = createPacketStruct(&data_pkt, i, ECHOMAX, echoString);
+            // printf("size of packet: %d\n", packetSize);
 
             now = time(0);
             numBytes = sendto(sock, &data_pkt, packetSize, 0, (struct sockaddr *)&echoServAddr, sizeof(echoServAddr));
             printf("SEND PACKET %d\n", data_pkt.seq_num);
         }
-        if (closingCount >= totalClosingCount)
-        {
-            printf("Final ACK Lost.....Ending!\n");
-            break;
-        }
 
-        //Client Listening to server's ACK begins //
+
+        /* Listen for ack from reciever */
         while (1)
         {
-            
+            //Setup Select
             struct timeval tv;
             fd_set set;
 
@@ -191,7 +179,6 @@ int main(int argc, char *argv[])
             tv.tv_usec = 0;
             FD_ZERO(&set);
             FD_SET(sock, &set);
-
 
             if (select(sock + 1, &set, NULL, NULL, &tv) < 0)
             {
@@ -208,7 +195,7 @@ int main(int argc, char *argv[])
                     {
                         tries += 1; //need to be checked at last
                         printf("Timed Out. %d more tries ...\n", MAXTRIES - tries);
-                       
+                        sleep(1);
                     }
                     else
                     {
@@ -221,31 +208,19 @@ int main(int argc, char *argv[])
 
                     int ackNum = ack_pkt.ack_no;
                     int cumAckNum = ack_pkt.ack_cum_no;
-
                     printf("-------- RECEIVE ACK %d \n", cumAckNum - 1);
                     now = time(0);
+
+                    //done
                     if (i == numPackets && cumAckNum == numPackets)
                     {
+                      
                         printf("Data Transfer Completed!\n");
                         close(sock);
                         exit(0);
                     }
 
-                    if (i == numPackets && cumAckNum < numPackets && j > 0)
-                    {
-                        if (cumAckNum == numPackets - 1)
-                        {
-                            closingCount++;
-                        }
-
-                        int packetSize = createPacketStruct(&data_pkt, i, ECHOMAX, echoString);
-
-                        now = time(0);
-                        numBytes = sendto(sock, &data_pkt, packetSize, 0, (struct sockaddr *)&echoServAddr, sizeof(echoServAddr));
-                        printf("RESEND Packet %d\n", data_pkt.seq_num);
-                    }
-
-                    //If ack = base-1 OR duplicate ack count equals 3 RESEND
+                    //Resend the packet if ack = base-1 i.e. duplicate ack with count equal to 3
                     if (cumAckNum - 1 == lastAckReceived && cumAckNum < numPackets)
                     {
                         ndups++;
@@ -253,29 +228,21 @@ int main(int argc, char *argv[])
                         {
                             j++;
                             //for final packet
-                            if (cumAckNum == numPackets - 1)
-                            {
-                                closingCount++;
-                            }
-
-                            int packetSize = createPacketStruct(&data_pkt, i, ECHOMAX, echoString);
+                            
+                            int packetSize = createPacketStruct(&data_pkt, cumAckNum, ECHOMAX, echoString);
 
                             now = time(0);
                             numBytes = sendto(sock, &data_pkt, packetSize, 0, (struct sockaddr *)&echoServAddr, sizeof(echoServAddr));
                             printf("RESEND Packet %d\n", data_pkt.seq_num);
-                            ndups =0;
                         }
                     }
 
-                    //Normal case: if ack >= base :Send next packet
+                    //Send the next packet if ack > base
                     if (cumAckNum - 1 > lastAckReceived && cumAckNum < numPackets && i < numPackets)
                     {
+                        ndups = 0;
                         lastAckReceived++;
-                        //for final packet
-                        if (cumAckNum == numPackets - 1 && i == numPackets - 1)
-                        {
-                            closingCount++;
-                        }
+                        
                         int packetSize = createPacketStruct(&data_pkt, i, ECHOMAX, echoString);
 
                         now = time(0);
@@ -289,10 +256,10 @@ int main(int argc, char *argv[])
             {
                 if (tries < MAXTRIES)
                 {
-                    tries += 1; 
+                    tries += 1; //need to be checked at last
                     printf("TIMEOUT. Resend window!\n");
                     printf("%d more tries ...\n", MAXTRIES - tries);
-                  
+                   
                 }
                 else
                 {

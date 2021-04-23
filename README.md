@@ -17,5 +17,4 @@ After compliation two executables are available in the directory which can be ru
 The client reads server ip, server port. The string to be sent is already initialized within the client program. The size of messages client will sent is sizeof(int)*3 + length. To simplify the assignment, we assume that the length of data is always 10. Every time we need to send 10 bytes from the buffer. So the total size is fixed at 22 bytes. The sequence numbers are 0,1,2,...23. The wait time for receieving ack is fixed at 4 secs.
 The receiver declares a receiving buffer to hold the content sent from the sender. After receiving a packet from a sender, it will determine whether to drop the packet or not by checking with the list of numbers parameter provided as arguments when running the program. If the packet is not dropped cumulative ACK is sent back to the client.
 
-## Limitations:
-There is one yet to be resolved BUG in code that is causing issues if packet number 19 is included as the last packet to be dropped in the list of numbers passed as command line argument to simulate the packet loss.
+
